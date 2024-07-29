@@ -107,6 +107,13 @@ void process_state() {
             break;
     }
 }
+float makePositive(float value) {
+    if (value < 0) {
+        return -value;
+    } else {
+        return value;
+    }
+}
 void move_45(float cordX, float cordY){
   if(cordX>0){
     digitalWrite(M1, HIGH);
@@ -123,11 +130,8 @@ void move_45(float cordX, float cordY){
     digitalWrite(M2, 0);
   }
   //motor power is applied at the end to not have uncorrect assiegnments
-    analogWrite(E1, 255*abs(cordX));
-    Serial.print(255*abs(cordX));
-    Serial.println(" ");
-    analogWrite(E2, 255*abs(cordY));
-}
+    analogWrite(E1, 255*makePositive(cordX));
+    analogWrite(E2, 255*makePositive(cordY));
 void rotate_angle(float* arr){
     //WARNING THIS WILL CONVER 0,1 => -0.707, 0.707
     float x1 = arr[0], y1 = arr[1];
