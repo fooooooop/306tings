@@ -132,6 +132,7 @@ void move_45(float cordX, float cordY){
   //motor power is applied at the end to not have uncorrect assiegnments
     analogWrite(E1, 255*makePositive(cordX));
     analogWrite(E2, 255*makePositive(cordY));
+}
 void rotate_angle(float* arr){
     //WARNING THIS WILL CONVER 0,1 => -0.707, 0.707
     float x1 = arr[0], y1 = arr[1];
