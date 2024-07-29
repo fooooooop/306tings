@@ -1,0 +1,113 @@
+const int pinINT0 = 2; // INT0 is on Pin 2 on Arduino Uno
+const int pinINT1 = 3; // INT1 is on Pin 3 on Arduino Uno
+volatile int count = 0; // Variable to store the encoder count
+const int countsPerRevolution = 48; // Encoder counts per revolution
+const int targetCounts = (countsPerRevolution * 172); // 8256 Target counts for 2 rotations (adjust gear ratio if necessary)
+const int E1 = 5; // PWM pin for motor 1 speed control
+const int M1 = 4; // Direction pin for motor 1
+const int E2 = 6; // PWM pin for motor 2 speed control
+const int M2 = 7; // Direction pin for motor 2
+bool direction = true; // Variable to track motor direction
+
+
+// Proportional controller gain
+float Kp = 1.0;
+float scalingFactor=0.5;
+
+void setup() {
+  // Set encoder pins as inputs with internal pull-up resistors
+  pinMode(pinINT0, INPUT_PULLUP);
+  pinMode(pinINT1, INPUT_PULLUP);
+  
+  // Set motor control pins as outputs
+  pinMode(E1, OUTPUT);
+  pinMode(E2, OUTPUT);
+  pinMode(M1, OUTPUT);
+  pinMode(M2, OUTPUT);
+  
+  // Attach interrupts to the encoder pins to count the pulses
+  attachInterrupt(digitalPinToInterrupt(pinINT1), ISR_INT1, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(pinINT0), ISR_INT0, CHANGE);
+  
+  // Initialize serial communication for debugging
+  Serial.begin(115200);
+  Serial.print("Start of code ");
+
+
+}
+
+void loop() {
+  // Calculate the error between target counts and actual counts
+  int error = targetCounts - count;
+   Serial.print("The error is ");
+  Serial.print(error);
+  
+  // Calculate the control signal using proportional control
+  float unconstrainedControlSignal = Kp * error;
+
+  Serial.print(" therefore the control signal before scalling is ");
+  Serial.print(unconstrainedControlSignal);
+  Serial.println(" ");
+
+  float scaledError;
+   if (count > scalingFactor * targetCounts) {
+    scaledError = unconstrainedControlSignal / (scalingFactor * targetCounts) * 255.0;
+  } else {
+    scaledError = unconstrainedControlSignal;
+  }
+   
+  
+  // Limit the control signal to the range 0-255 for PWM
+  int controlSignal = constrain(scaledError, 0, 255);
+
+  // Set motor direction and speed based on control signal
+  if (controlSignal > 0) {
+    // Move motor forward
+    direction = true;
+    digitalWrite(M1, HIGH); // Set direction to forward for motor 1
+    digitalWrite(M2, HIGH); // Set direction to forward for motor 2
+    analogWrite(E1, controlSignal); // Set speed for motor 1
+    analogWrite(E2, controlSignal); // Set speed for motor 2
+  } else {
+    // Move motor backward
+    direction = false;
+    digitalWrite(M1, LOW); // Set direction to backward for motor 1
+    digitalWrite(M2, LOW); // Set direction to backward for motor 2
+    analogWrite(E1, -controlSignal); // Set speed for motor 1
+    analogWrite(E2, -controlSignal); // Set speed for motor 2
+  }
+
+  // Print the encoder count and control signal for debugging
+  Serial.print("Encoder Count: ");
+  Serial.print(count);
+  Serial.print(" after constrain Control Signal: ");
+  Serial.println(controlSignal);
+
+  // Stop the motor if the target is reached
+  if (abs(error) < 1) {
+    analogWrite(E1, 0); // Stop motor 1
+    analogWrite(E2, 0); // Stop motor 2
+    Serial.println("Target reached!");
+    while (1); // Stop the loop
+  }
+
+  delay(100); // Delay for a short time to avoid excessive CPU usage
+}
+
+// Interrupt Service Routine for INT0
+void ISR_INT0() {
+  if (direction) {
+    count++; // Increment count if moving forward
+  } else {
+    count--; // Decrement count if moving backward
+  }
+}
+
+// Interrupt Service Routine for INT1
+void ISR_INT1() {
+  if (direction) {
+    count++; // Increment count if moving forward
+  } else {
+    count--; // Decrement count if moving backward
+  }
+}
