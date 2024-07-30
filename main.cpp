@@ -5,13 +5,14 @@ static enum {topLeft_lim_switch, topRight_lim_switch, bottomLeft_lim_switch, bot
 
 
 // Arduino PWM Speed Control：
-const int pinINT0 = 13;  // INT0 is on Pin 2 on Arduino Uno
-volatile int countM1 = 0;
-volatile int countM2 = 0;
-int E1 = 5;
-int M1 = 4;
-int E2 = 6;
-int M2 = 7;
+const int pinINT0 = 2;  // Y CORD // left motat
+const int pinINT1 = 3;  // X CORD // right motar
+volatile int count_y = 0;
+volatile int count_X = 0;
+int E_X = 5;
+int M_X = 4;
+int E_Y = 6;
+int M_Y = 7;
 int encOneRev = 48 * 172 / 4;
 int revRatio = 3 / 4;
 
@@ -31,9 +32,10 @@ void setup() {
   pinMode(rightPin, OUTPUT);
   pinMode(leftPin, OUTPUT);
 
-  pinMode(M1, OUTPUT);
-  pinMode(M2, OUTPUT);
+  pinMode(M_X, OUTPUT);
+  pinMode(M_Y, OUTPUT);
   attachInterrupt(digitalPinToInterrupt(pinINT0), ISR_INT0, RISING);
+  attachInterrupt(digitalPinToInterrupt(pinINT1), ISR_INT1, RISING);
   Serial.begin(115200);
 }
 
@@ -58,10 +60,26 @@ void findState() {
         state = null_switch;
     }
 }
+int p_I_D_distance_TO_ENCODER_left (int target,volatile int &current){
+  int error = target- current;
+  int Kp = 50;
+  int Ki=0;
+  int Kd=0;
+  int gain = error*Kp+Ki*1/error+Kd*error;
+  return gain;
+}
+int p_I_D_distance_TO_ENCODER_right (int target,volatile int &current){
+  int error = target- current;
+  int Kp = 50;
+  int Ki=0;
+  int Kd=0;
+  int gain = error*Kp+Ki*1/error+Kd*error;
+  return gain;
+}
 
 void die_badday(){
-    analogWrite(E1, 0);
-    analogWrite(E2, 0);
+    analogWrite(E_X, 0);
+    analogWrite(E_Y, 0);
     exit(1);
     return;
 }
@@ -107,74 +125,78 @@ void process_state() {
             break;
     }
 }
-float makePositive(float value) {
-    if (value < 0) {
-        return -value;
-    } else {
-        return value;
-    }
-}
-void move_45(float cordX, float cordY){
-  if(cordX>0){
-    digitalWrite(M1, HIGH);
-  }else if(cordX<0){
-    digitalWrite(M1, LOW);
-  } else{
-    digitalWrite(M1, 0);
-  }
-  if(cordY>0){
-     digitalWrite(M2, HIGH);
-  }else if(cordY<0){
-    digitalWrite(M2, LOW);
-  } else{
-    digitalWrite(M2, 0);
-  }
-  //motor power is applied at the end to not have uncorrect assiegnments
-    analogWrite(E1, 255*makePositive(cordX));
-    analogWrite(E2, 255*makePositive(cordY));
-}
-void rotate_angle(float* arr){
-    //WARNING THIS WILL CONVER 0,1 => -0.707, 0.707
-    float x1 = arr[0], y1 = arr[1];
-    float x2 = 0, y2 = 0, angle = 0.785398; // 45 degrees in radians
-    x2 = x1 * cos(angle) - y1 * sin(angle);
-    y2 = x1 * sin(angle) + y1 * cos(angle);
-    arr[0] = (round(x2*1000))/1000, arr[1] = (round(y2*1000))/1000;
-}
-void angle_to_coordinates(float angle, float& x, float& y) {
-    float radians = angle * 22/7 / 180.0; //pie substatute 22/7
-    x = cos(radians);
-    y = sin(radians);
-}
-void move(float angle){
-  float x,y;
-  angle_to_coordinates(angle, x, y);
-  float arr2[2] = {x, y};
-  rotate_angle(arr2);
-  x= arr2[0], y=arr2[1];
-  move_45(x,y);
-}
+void line_basic(int encoder_count, volatile int &current_A, int M_A, int E_A,uint8_t state){
+  while(abs(current_A)<abs(encoder_count)){
+    Serial.print("THE A CORDINATE :");
+    Serial.println(current_A);
+    Serial.print(" THE CURRENT ENCODER VALUE : ");
+    Serial.println(encoder_count);
 
-void loop() {
-  // int* distances = motorDistancetoActual();
-    // digitalWrite(M1, LOW);
-    // digitalWrite(M2, LOW);
-    // analogWrite(E1, 255);
-    // analogWrite(E2, 255*0.95); 
 
-  while(1){
     findState();
     process_state();
+    digitalWrite(M_A, state);
+    analogWrite(E_A, 255);
   }
+    analogWrite(E_A, 0);
+    exit(1);
+
+}
+
+
+void loop() {
+    // digitalWrite(M_X, LOW);
+    // analogWrite(E_X, 255);
+    // digitalWrite(M_Y, LOW);
+    // analogWrite(E_Y, 255); 
+    // Serial.println(DistanceToMotorEncoder(50));
+    line_basic(DistanceToMotorEncoder(50),count_X,M_X,E_X,LOW);
+    while(1){
+    findState();
+    process_state();
+
+    // Serial.print("The X cord: ");
+    // Serial.println(coun_X);
+
+    // Serial.print("The Y cord: ");
+    // Serial.println(count_y);
+    }
+
+    // digitalWrite(M1, HIGH);
+    // digitalWrite(M2, LOW);
+    // analogWrite(E1, 200);
+    // analogWrite(E2, 200); 
+
+    // Serial.print("The Y cord: ");
+    // Serial.println(countM2);
+    // Serial.print("The X cord: ");
+    // Serial.println(countM1);
+    // // move_45(-1,1);
+    // if (makePositive(float(countM1)) >500 || (makePositive(float(countM2)))  > 500){
+    // while(1){
+    // findState();
+    // process_state();
+    // analogWrite(E1, 0);
+    // analogWrite(E2, 0); 
+    //   }
+    // }
 }
 
 
 
 void ISR_INT0() {
-  if (digitalRead(M1) == HIGH) {
-    countM1++;
+  if (digitalRead(M_Y) == HIGH) {
+    count_y++;
   } else {
-    countM1--;
+    count_y--;
+  }
+}
+
+void ISR_INT1() {
+  if (digitalRead(M_X) == HIGH) {
+    count_X++;
+  } else {
+    count_X--;
   }
 }
 
@@ -184,13 +206,17 @@ int motorEncoderToMotorDistance(int encoderCounts) {
   int distance = encoderCounts * circum / encOneRev;
   return distance;
 }
-
+int DistanceToMotorEncoder(int distance){
+  // int circum = 2 * PI * radius;
+  // int encoderCounts =(distance * encOneRev)/ circum;
+  return distance*50;
+}
 // Function to turn motor distance to actual distance
 int* motorDistancetoActual() {
   static int results[2];  // Declare a static array to hold the results
 
-  int distMot1 = motorEncoderToMotorDistance(countM1);
-  int distMot2 = motorEncoderToMotorDistance(countM2);
+  int distMot1 = motorEncoderToMotorDistance(count_y);
+  int distMot2 = motorEncoderToMotorDistance(count_X);
 
   int x = (distMot1 + distMot2) / 2;
   int y = (distMot1 - distMot2) / 2;
@@ -204,10 +230,6 @@ int* motorDistancetoActual() {
 // Functino that makes motor go up
 void motorUp() {
 
-    digitalWrite(M1, LOW);
-    digitalWrite(M2, HIGH);
-    analogWrite(E1, 255);
-    analogWrite(E2, 255);
 
 
     
