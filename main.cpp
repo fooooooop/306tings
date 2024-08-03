@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <math.h>
+#include <avr/io.h>
+#include <avr/interrupt.h>
 static enum {topLeft_lim_switch, topRight_lim_switch, bottomLeft_lim_switch, bottomRight_lim_switch, top_lim_switch, right_lim_switch, left_lim_switch, bottom_lim_switch, null_switch} state = null_switch;
 
 
@@ -22,6 +24,7 @@ int rightPin = 10;
 int leftPin = 11;
 
 
+const int LED_pin = 13; //my funny ideas 
 
 int radius = 13.18 / 2;  // mm
 
@@ -37,6 +40,21 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(pinINT0), ISR_INT0, RISING);
   attachInterrupt(digitalPinToInterrupt(pinINT1), ISR_INT1, RISING);
   Serial.begin(115200);
+
+
+
+//timer setup for limit isr. 
+cli();
+
+TCCR1A = 0; 
+TCCR1B = 0;
+TCNT1 = 0; 
+//testing here
+unsigned int reload = 0xA3A; // 
+TCCR1B |= (1 << WGM12) | (1 << CS12) | (1 << CS10);
+OCR1A = reload;
+TIMSK1 |= (1 << OCIE1A);
+sei();
 }
 
 void findState() {
@@ -60,31 +78,18 @@ void findState() {
         state = null_switch;
     }
 }
-int p_I_D_distance_TO_ENCODER_left (int target,volatile int &current){
-  int error = target- current;
-  int Kp = 50;
-  int Ki=0;
-  int Kd=0;
-  int gain = error*Kp+Ki*1/error+Kd*error;
-  return gain;
-}
-int p_I_D_distance_TO_ENCODER_right (int target,volatile int &current){
-  int error = target- current;
-  int Kp = 50;
-  int Ki=0;
-  int Kd=0;
-  int gain = error*Kp+Ki*1/error+Kd*error;
-  return gain;
-}
+
 
 void die_badday(){
+  while(1){
     analogWrite(E_X, 0);
     analogWrite(E_Y, 0);
     exit(1);
-    return;
+  }
+      return;
 }
 
-void process_state() {
+int process_state() {
     char input;
     switch (state) {
         case topLeft_lim_switch:
@@ -124,24 +129,41 @@ void process_state() {
         // die_badday();
             break;
     }
+  return 1;
 }
-void line_basic(int encoder_count, volatile int &current_A, int M_A, int E_A,uint8_t state){
-  while(abs(current_A)<abs(encoder_count)){
-    Serial.print("THE A CORDINATE :");
-    Serial.println(current_A);
-    Serial.print(" THE CURRENT ENCODER VALUE : ");
-    Serial.println(encoder_count);
 
-
-    findState();
-    process_state();
-    digitalWrite(M_A, state);
-    analogWrite(E_A, 255);
-  }
-    analogWrite(E_A, 0);
-    exit(1);
-
+int p_I_D_distance_TO_ENCODER_left_y (int target,volatile int &current){
+  int error = (target)*50- current; // 50 is an aprox conversion of encoders to distance 
+  int Kp = 3;
+  int Ki=0;
+  int Kd=0;
+  int gain = error*Kp+Ki*1/error+Kd*error;
+  return gain;
 }
+int p_I_D_distance_TO_ENCODER_right_x (int target,volatile int &current){
+  int error = (target*50)- current; // 50 is an aprox conversion of encoders to distance 
+  int Kp = 3;
+  int Ki=0;
+  int Kd=0;
+  int gain = error*Kp+Ki*1/error+Kd*error;
+  return gain;
+}
+void move_right_x(int target, volatile int &count_A,  int accepted_range, int &M_A, int &E_A) {
+    int gain_X = p_I_D_distance_TO_ENCODER_right_x(target, count_A);
+    if (abs(gain_X) <= accepted_range) {
+        die_badday();
+        return;
+    } else if (gain_X > 0) {
+        digitalWrite(M_A, HIGH);
+        analogWrite(E_A,gain_X);
+    } else {
+        digitalWrite(M_A, LOW);
+        analogWrite(E_A, gain_X);
+    }
+    Serial.println(gain);
+    return;
+}
+
 
 
 void loop() {
@@ -150,17 +172,23 @@ void loop() {
     // digitalWrite(M_Y, LOW);
     // analogWrite(E_Y, 255); 
     // Serial.println(DistanceToMotorEncoder(50));
-    line_basic(DistanceToMotorEncoder(50),count_X,M_X,E_X,LOW);
-    while(1){
-    findState();
-    process_state();
+    // p_I_D_distance_TO_ENCODER_right_x(50,count_x)
+    // findState();
+    // process_state();
+    // digitalWrite(LED_pin, HIGH);
+    // digitalWrite(LED_pin, LOW);
+
+    move_right_x(-50, count_X,10,M_X,E_X );
+    // while(1){
+    // findState();
+    // process_state();
 
     // Serial.print("The X cord: ");
     // Serial.println(coun_X);
 
     // Serial.print("The Y cord: ");
     // Serial.println(count_y);
-    }
+    // }
 
     // digitalWrite(M1, HIGH);
     // digitalWrite(M2, LOW);
@@ -184,6 +212,7 @@ void loop() {
 
 
 
+
 void ISR_INT0() {
   if (digitalRead(M_Y) == HIGH) {
     count_y++;
@@ -199,7 +228,11 @@ void ISR_INT1() {
     count_X--;
   }
 }
-
+ISR(TIMER1_COMPA_vect) {
+    findState();
+    process_state();
+    // Serial.println("why run this every time right? ");
+}
 // Function to turn motor encoder into distance
 int motorEncoderToMotorDistance(int encoderCounts) {
   int circum = 2 * PI * radius;
@@ -228,14 +261,14 @@ int* motorDistancetoActual() {
 }
 
 // Functino that makes motor go up
-void motorUp() {
+// void motorUp() {
 
 
 
     
-  // if (digitalRead(topPin) ){
-  //   analogWrite(E1, 0);
-  //   analogWrite(E2, 0);
-  //   exit(1);
-  // } 
-}
+//   // if (digitalRead(topPin) ){
+//   //   analogWrite(E1, 0);
+//   //   analogWrite(E2, 0);
+//   //   exit(1);
+//   // } 
+// }
